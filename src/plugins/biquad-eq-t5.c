@@ -111,46 +111,43 @@ float dbToGainFactor(float db) {
 
 BiquadCoeffs calcCoeffsLowShelf(float f, float g, float q, float samplerate) {
   BiquadCoeffs coeffs;
-  float V = dbToGainFactor(g);
-  float K = tan(M_PI * f / samplerate);
-  float norm = 1 / (1 + sqrt(2) * K + K * K);
-  coeffs.b0 = (1 + sqrt(2*V) * K + V * K * K) * norm;
-  coeffs.b1 = 2 * (V * K * K - 1) * norm;
-  coeffs.b2 = (1 - sqrt(2*V) * K + V * K * K) * norm;
-  coeffs.a0 = 1;
-  coeffs.a1 = 2 * (K * K - 1) * norm;
-  coeffs.a2 = (1 - sqrt(2) * K + K * K) * norm;
+  float w0 = 2.0 * M_PI * f / samplerate;
+  float alpha = sin(w0) / (2.0 * q);
+  float A = pow(10, g / 40.0);
+  coeffs.b0 =     A*( (A+1.0) - (A-1.0)*cos(w0) + 2.0*sqrt(A)*alpha );
+  coeffs.b1 = 2.0*A*( (A-1.0) - (A+1.0)*cos(w0)                     );
+  coeffs.b2 =     A*( (A+1.0) - (A-1.0)*cos(w0) - 2.0*sqrt(A)*alpha );
+  coeffs.a0 =         (A+1.0) + (A-1.0)*cos(w0) + 2.0*sqrt(A)*alpha;
+  coeffs.a1 =  -2.0*( (A-1.0) + (A+1.0)*cos(w0)                     );
+  coeffs.a2 =         (A+1.0) + (A-1.0)*cos(w0) - 2.0*sqrt(A)*alpha;
   return coeffs;
 }
 
 BiquadCoeffs calcCoeffsPeaking(float f, float g, float q, float samplerate) {
-  float A, omega, cs, sn, alpha;
   BiquadCoeffs coeffs;
-  A = dbToGainFactor(g);
-  omega = (2 * M_PI * f) / samplerate;
-  sn = sin(omega);
-  cs = cos(omega);
-  alpha = sn / (2.0 * q);
-  coeffs.b0 = 1 + (alpha * A);
-  coeffs.b1 = -2 * cs;
-  coeffs.b2 = 1 - (alpha * A);
-  coeffs.a0 = 1 + (alpha / A);
-  coeffs.a1 = -2 * cs;
-  coeffs.a2 = 1 - (alpha / A);
+  float w0 = 2.0 * M_PI * f / samplerate;
+  float alpha = sin(w0) / (2.0 * q);
+  float A = pow(10, g / 40.0);
+  coeffs.b0 = 1.0 + alpha * A;
+  coeffs.b1 = -2.0 * cos(w0);
+  coeffs.b2 = 1.0 - alpha * A;
+  coeffs.a0 = 1.0 + alpha / A;
+  coeffs.a1 = -2.0 * cos(w0);
+  coeffs.a2 = 1.0 - alpha / A;
   return coeffs;
 }
 
 BiquadCoeffs calcCoeffsHighShelf(float f, float g, float q, float samplerate) {
   BiquadCoeffs coeffs;
-  float V = dbToGainFactor(g);
-  float K = tan(M_PI * f / samplerate);
-  float norm = 1 / (V + sqrt(2*V) * K + K * K);
-  coeffs.a0 = (1 + sqrt(2) * K + K * K) * norm;
-  coeffs.a1 = 2 * (K * K - 1) * norm;
-  coeffs.a2 = (1 - sqrt(2) * K + K * K) * norm;
-  coeffs.b0 = 1;
-  coeffs.b1 = 2 * (K * K - V) * norm;
-  coeffs.b2 = (V - sqrt(2*V) * K + K * K) * norm;
+  float w0 = 2.0 * M_PI * f / samplerate;
+  float alpha = sin(w0) / (2.0 * q);
+  float A = pow(10, g / 40.0);
+  coeffs.b0 =      A*( (A+1.0) + (A-1.0)*cos(w0) + 2.0*sqrt(A)*alpha );
+  coeffs.b1 = -2.0*A*( (A-1.0) + (A+1.0)*cos(w0)                     );
+  coeffs.b2 =      A*( (A+1.0) + (A-1.0)*cos(w0) - 2.0*sqrt(A)*alpha );
+  coeffs.a0 =          (A+1.0) - (A-1.0)*cos(w0) + 2.0*sqrt(A)*alpha;
+  coeffs.a1 =    2.0*( (A-1.0) - (A+1.0)*cos(w0)                     );
+  coeffs.a2 =          (A+1.0) - (A-1.0)*cos(w0) - 2.0*sqrt(A)*alpha;
   return coeffs;
 }
 
