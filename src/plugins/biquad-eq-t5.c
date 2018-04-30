@@ -13,7 +13,14 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <time.h>
 
 /*****************************************************************************/
 
@@ -45,6 +52,11 @@
 
 /* Instance data for the biquad eq filter */
 typedef struct {
+
+  long m_created_ns;
+  time_t m_created_s;
+
+  LADSPA_Data * m_mmapArea;
 
   LADSPA_Data m_fSampleRate;
   // previous input samples of biquad filters
@@ -155,12 +167,28 @@ BiquadCoeffs calcCoeffsHighShelf(float f, float g, float q, float samplerate) {
 
 /* Construct a new plugin instance. */
 LADSPA_Handle instantiateBiquadEq(const LADSPA_Descriptor * Descriptor,
-                    unsigned long SampleRate) {
+                                  unsigned long SampleRate) {
   BiquadEq * psBiquadEq;
   psBiquadEq = (BiquadEq *)malloc(sizeof(BiquadEq));
   if (psBiquadEq) {
     psBiquadEq->m_fSampleRate = (LADSPA_Data)SampleRate;
   }
+  char name[255];
+  long ns;
+  time_t s;
+  struct timespec spec;
+  clock_gettime(CLOCK_REALTIME, &spec);
+  s = spec.tv_sec;
+  ns = spec.tv_nsec;
+  sprintf(name, "/dev/shm/t5-parameq_%u_%011lu.%09lu", getpid(), s, ns);
+  int fd = open(name, O_RDWR | O_CREAT, 0600);
+  int ret = ftruncate(fd, (PORTCOUNT-1) * sizeof(LADSPA_Data));
+  if (ret != 0) {
+    printf("ERROR: could not truncate mmaped file %s", name);
+  }
+  psBiquadEq->m_mmapArea = (LADSPA_Data *) mmap(NULL, PORTCOUNT * sizeof(LADSPA_Data), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+  psBiquadEq->m_created_s = s;
+  psBiquadEq->m_created_ns = ns;
   return psBiquadEq;
 }
 
@@ -173,23 +201,23 @@ void activateBiquadEq(LADSPA_Handle Instance) {
   psBiquadEq->m_fxnm1_LOW = 0;
   psBiquadEq->m_fxnm2_LOW = 0;
   psBiquadEq->m_fynm1_LOW = 0;
-  psBiquadEq->m_fynm1_LOW = 0;
+  psBiquadEq->m_fynm2_LOW = 0;
   psBiquadEq->m_fxnm1_P1 = 0;
   psBiquadEq->m_fxnm2_P1 = 0;
   psBiquadEq->m_fynm1_P1 = 0;
-  psBiquadEq->m_fynm1_P1 = 0;
+  psBiquadEq->m_fynm2_P1 = 0;
   psBiquadEq->m_fxnm1_P2 = 0;
   psBiquadEq->m_fxnm2_P2 = 0;
   psBiquadEq->m_fynm1_P2 = 0;
-  psBiquadEq->m_fynm1_P2 = 0;
+  psBiquadEq->m_fynm2_P2 = 0;
   psBiquadEq->m_fxnm1_P3 = 0;
   psBiquadEq->m_fxnm2_P3 = 0;
   psBiquadEq->m_fynm1_P3 = 0;
-  psBiquadEq->m_fynm1_P3 = 0;
+  psBiquadEq->m_fynm2_P3 = 0;
   psBiquadEq->m_fxnm1_HIGH = 0;
   psBiquadEq->m_fxnm2_HIGH = 0;
   psBiquadEq->m_fynm1_HIGH = 0;
-  psBiquadEq->m_fynm1_HIGH = 0;
+  psBiquadEq->m_fynm2_HIGH = 0;
 }
 
 /*****************************************************************************/
@@ -270,6 +298,9 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   BiquadEq * psBiquadEq;
   BiquadCoeffs coeffs_LOW, coeffs_P1, coeffs_P2, coeffs_P3, coeffs_HIGH;
   unsigned long lSampleIndex;
+  LADSPA_Data unchanged = 0.0;
+  LADSPA_Data changed;
+  LADSPA_Data * mmptr;
   float fGainFactor;
   float xn, yn; // xn/yn holds currently processed input/output sample.
   float xnm1, xnm2, ynm1, ynm2; // holds previously processed input/output samples.
@@ -278,6 +309,45 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   // get input and output buffers
   pfInput = psBiquadEq->m_pfInput;
   pfOutput = psBiquadEq->m_pfOutput;
+  //memcpy parameters over from mmapped area
+  mmptr = psBiquadEq->m_mmapArea;
+  memcpy(&changed, mmptr, sizeof(LADSPA_Data));
+  if (changed != 0.0) {
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfLowF, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfLowG, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfLowQ, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP1F, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP1G, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP1Q, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP2F, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP2G, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP2Q, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP3F, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP3G, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfP3Q, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfHighF, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfHighG, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfHighQ, mmptr, sizeof(LADSPA_Data));
+    mmptr += 1;
+    memcpy(psBiquadEq->m_pfGain, mmptr, sizeof(LADSPA_Data));
+  }
+  // reset changed flag to re-enable parametrization by control inputs
+  memcpy(psBiquadEq->m_mmapArea, &unchanged, sizeof(LADSPA_Data));
   // calculate coeffs and gain factor
   coeffs_LOW = calcCoeffsLowShelf(*(psBiquadEq->m_pfLowF),
 	  		          *(psBiquadEq->m_pfLowG),
@@ -305,7 +375,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   xnm1 = psBiquadEq->m_fxnm1_LOW;
   xnm2 = psBiquadEq->m_fxnm2_LOW;
   ynm1 = psBiquadEq->m_fynm1_LOW;
-  ynm2 = psBiquadEq->m_fynm1_LOW;
+  ynm2 = psBiquadEq->m_fynm2_LOW;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfInput++);
@@ -318,10 +388,10 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
     *(pfOutput++) = yn;
   }
   // store preciously calculated samples in BiQuad instance for later
-  psBiquadEq->m_fxnm1_P1 = xnm1;
-  psBiquadEq->m_fxnm2_P1 = xnm2;
-  psBiquadEq->m_fynm1_P1 = ynm1;
-  psBiquadEq->m_fynm1_P1 = ynm2;
+  psBiquadEq->m_fxnm1_LOW = xnm1;
+  psBiquadEq->m_fxnm2_LOW = xnm2;
+  psBiquadEq->m_fynm1_LOW = ynm1;
+  psBiquadEq->m_fynm2_LOW = ynm2;
   // FILTER PROCESSING FOR PEAKING EQ 1 ///////////////////////////////////////
   // reset output buffer pointer
   pfOutput = psBiquadEq->m_pfOutput;
@@ -329,7 +399,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   xnm1 = psBiquadEq->m_fxnm1_P1;
   xnm2 = psBiquadEq->m_fxnm2_P1;
   ynm1 = psBiquadEq->m_fynm1_P1;
-  ynm2 = psBiquadEq->m_fynm1_P1;
+  ynm2 = psBiquadEq->m_fynm2_P1;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
@@ -345,7 +415,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   psBiquadEq->m_fxnm1_P1 = xnm1;
   psBiquadEq->m_fxnm2_P1 = xnm2;
   psBiquadEq->m_fynm1_P1 = ynm1;
-  psBiquadEq->m_fynm1_P1 = ynm2;
+  psBiquadEq->m_fynm2_P1 = ynm2;
   // FILTER PROCESSING FOR PEAKING EQ 2 ///////////////////////////////////////
   // reset output buffer pointer
   pfOutput = psBiquadEq->m_pfOutput;
@@ -353,7 +423,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   xnm1 = psBiquadEq->m_fxnm1_P2;
   xnm2 = psBiquadEq->m_fxnm2_P2;
   ynm1 = psBiquadEq->m_fynm1_P2;
-  ynm2 = psBiquadEq->m_fynm1_P2;
+  ynm2 = psBiquadEq->m_fynm2_P2;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
@@ -369,7 +439,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   psBiquadEq->m_fxnm1_P2 = xnm1;
   psBiquadEq->m_fxnm2_P2 = xnm2;
   psBiquadEq->m_fynm1_P2 = ynm1;
-  psBiquadEq->m_fynm1_P2 = ynm2;
+  psBiquadEq->m_fynm2_P2 = ynm2;
   // FILTER PROCESSING FOR PEAKING EQ 3 ///////////////////////////////////////
   // reset output buffer pointer
   pfOutput = psBiquadEq->m_pfOutput;
@@ -377,7 +447,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   xnm1 = psBiquadEq->m_fxnm1_P3;
   xnm2 = psBiquadEq->m_fxnm2_P3;
   ynm1 = psBiquadEq->m_fynm1_P3;
-  ynm2 = psBiquadEq->m_fynm1_P3;
+  ynm2 = psBiquadEq->m_fynm2_P3;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
@@ -393,7 +463,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   psBiquadEq->m_fxnm1_P3 = xnm1;
   psBiquadEq->m_fxnm2_P3 = xnm2;
   psBiquadEq->m_fynm1_P3 = ynm1;
-  psBiquadEq->m_fynm1_P3 = ynm2;
+  psBiquadEq->m_fynm2_P3 = ynm2;
   // FILTER PROCESSING FOR HIGH SHELF EQ //////////////////////////////////////
   // reset output buffer pointer
   pfOutput = psBiquadEq->m_pfOutput;
@@ -401,7 +471,7 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   xnm1 = psBiquadEq->m_fxnm1_HIGH;
   xnm2 = psBiquadEq->m_fxnm2_HIGH;
   ynm1 = psBiquadEq->m_fynm1_HIGH;
-  ynm2 = psBiquadEq->m_fynm1_HIGH;
+  ynm2 = psBiquadEq->m_fynm2_HIGH;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
@@ -417,13 +487,22 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
   psBiquadEq->m_fxnm1_HIGH = xnm1;
   psBiquadEq->m_fxnm2_HIGH = xnm2;
   psBiquadEq->m_fynm1_HIGH = ynm1;
-  psBiquadEq->m_fynm1_HIGH = ynm2;
+  psBiquadEq->m_fynm2_HIGH = ynm2;
 }
 
 /*****************************************************************************/
 
 /* Throw away a filter instance. */
 void cleanupBiquadEq(LADSPA_Handle Instance) {
+  BiquadEq * psBiquadEq;
+  psBiquadEq = (BiquadEq *)Instance;
+  char name[255];
+  sprintf(name, "/dev/shm/t5-parameq_%u_%011lu.%09lu", getpid(),
+          psBiquadEq->m_created_s, psBiquadEq->m_created_ns);
+  int ret = remove(name);
+  if (ret != 0) {
+    printf("Error removing mmap file %s\n", name);
+  }
   free(Instance);
 }
 
@@ -449,7 +528,7 @@ _init() {
     g_psBiquadEqDescriptor->UniqueID
       = 5;
     g_psBiquadEqDescriptor->Label
-      = strdup("biquad-eq-t5");
+      = strdup("biquadeq_5");
     g_psBiquadEqDescriptor->Properties
       = LADSPA_PROPERTY_HARD_RT_CAPABLE;
     g_psBiquadEqDescriptor->Name 
@@ -457,7 +536,7 @@ _init() {
     g_psBiquadEqDescriptor->Maker
       = strdup("Juergen Herrmann (t-5@gmx.de)");
     g_psBiquadEqDescriptor->Copyright
-      = strdup("None");
+      = strdup("GPL");
     g_psBiquadEqDescriptor->PortCount
       = PORTCOUNT;
     piPortDescriptors
