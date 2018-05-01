@@ -15,16 +15,15 @@ INCLUDES	=	-I.
 LIBRARIES	=	-ldl -lm
 CFLAGS		=	$(INCLUDES) -Wall -O3 -fPIC
 CXXFLAGS	=	$(CFLAGS)
-PLUGINS		=	../plugins/biquad-eq-t5.so
+PLUGINS		=	../plugins/t5_3band_parameq_with_shelves.so
 CC		=	cc
-CPP		=	c++
 
 ###############################################################################
 #
 # RULES TO BUILD PLUGINS FROM C OR C++ CODE
-biquad-eq:	plugins/biquad-eq-t5.c
-	$(CC) $(CFLAGS) -o plugins/biquad-eq-t5.o -c plugins/biquad-eq-t5.c
-	$(LD) -o ../plugins/biquad-eq-t5.so plugins/biquad-eq-t5.o -shared
+t5_3band_parameq_with_shelves:	plugins/t5_3band_parameq_with_shelves.c
+	$(CC) $(CFLAGS) -o plugins/t5_3band_parameq_with_shelves.o -c plugins/t5_3band_parameq_with_shelves.c
+	$(LD) -o ../plugins/t5_3band_parameq_with_shelves.so plugins/t5_3band_parameq_with_shelves.o -shared
 
 ###############################################################################
 #
@@ -34,7 +33,7 @@ biquad-eq:	plugins/biquad-eq-t5.c
 install:	targets
 	cp ../plugins/* $(INSTALL_PLUGINS_DIR)
 
-targets:	biquad-eq
+targets:	t5_3band_parameq_with_shelves
 
 ###############################################################################
 #

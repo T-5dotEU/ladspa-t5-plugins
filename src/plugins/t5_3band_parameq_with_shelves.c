@@ -1,7 +1,7 @@
-/* biquad-eq-t5.c
+/* t5_3band_parameq_with_shelves.c
 
-   Free software by Juergen Herrmann. Do with it, whatever you want.
-   No warranty. None, whatsoever :)
+   Free software by Juergen Herrmann, t-5@gmx.de. Do with it, whatever you
+   want. No warranty. None, whatsoever. Also see license.txt .
 
    This LADSPA plugin provides a three band parametric equalizer with
    shelving low- and highpass filters based on biquad coefficients
@@ -50,7 +50,7 @@
 
 /*****************************************************************************/
 
-/* Instance data for the biquad eq filter */
+/* Instance data for the ThreeBandParametricEqWithShelves filter */
 typedef struct {
 
   long m_created_ns;
@@ -101,7 +101,7 @@ typedef struct {
   LADSPA_Data * m_pfHighQ;
   LADSPA_Data * m_pfGain;
 
-} BiquadEq;
+} ThreeBandParametricEqWithShelves;
 
 /* biquad coefficients */
 typedef struct {
@@ -166,13 +166,14 @@ BiquadCoeffs calcCoeffsHighShelf(float f, float g, float q, float samplerate) {
 /*****************************************************************************/
 
 /* Construct a new plugin instance. */
-LADSPA_Handle instantiateBiquadEq(const LADSPA_Descriptor * Descriptor,
+LADSPA_Handle instantiateThreeBandParametricEqWithShelves(const LADSPA_Descriptor * Descriptor,
                                   unsigned long SampleRate) {
-  BiquadEq * psBiquadEq;
-  psBiquadEq = (BiquadEq *)malloc(sizeof(BiquadEq));
-  if (psBiquadEq) {
-    psBiquadEq->m_fSampleRate = (LADSPA_Data)SampleRate;
+  ThreeBandParametricEqWithShelves * psInstance;
+  psInstance = (ThreeBandParametricEqWithShelves *)malloc(sizeof(ThreeBandParametricEqWithShelves));
+  if (psInstance) {
+    psInstance->m_fSampleRate = (LADSPA_Data)SampleRate;
   }
+  // setup shared memory area to enable parametrization at runtime from external processes
   char name[255];
   long ns;
   time_t s;
@@ -180,110 +181,111 @@ LADSPA_Handle instantiateBiquadEq(const LADSPA_Descriptor * Descriptor,
   clock_gettime(CLOCK_REALTIME, &spec);
   s = spec.tv_sec;
   ns = spec.tv_nsec;
-  sprintf(name, "/dev/shm/t5-parameq_%u_%011lu.%09lu", getpid(), s, ns);
+  sprintf(name, "/dev/shm/t5_3BandParamEqWithShelves_%u_%011lu.%09lu", getpid(), s, ns);
   int fd = open(name, O_RDWR | O_CREAT, 0600);
   int ret = ftruncate(fd, (PORTCOUNT-1) * sizeof(LADSPA_Data));
   if (ret != 0) {
     printf("ERROR: could not truncate mmaped file %s", name);
   }
-  psBiquadEq->m_mmapArea = (LADSPA_Data *) mmap(NULL, PORTCOUNT * sizeof(LADSPA_Data), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-  psBiquadEq->m_created_s = s;
-  psBiquadEq->m_created_ns = ns;
-  return psBiquadEq;
+  psInstance->m_mmapArea = (LADSPA_Data *) mmap(NULL, PORTCOUNT * sizeof(LADSPA_Data),
+                            PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+  psInstance->m_created_s = s;
+  psInstance->m_created_ns = ns;
+  return psInstance;
 }
 
 /*****************************************************************************/
 
 /* Initialise and activate a plugin instance. */
-void activateBiquadEq(LADSPA_Handle Instance) {
-  BiquadEq * psBiquadEq;
-  psBiquadEq = (BiquadEq *)Instance;
-  psBiquadEq->m_fxnm1_LOW = 0;
-  psBiquadEq->m_fxnm2_LOW = 0;
-  psBiquadEq->m_fynm1_LOW = 0;
-  psBiquadEq->m_fynm2_LOW = 0;
-  psBiquadEq->m_fxnm1_P1 = 0;
-  psBiquadEq->m_fxnm2_P1 = 0;
-  psBiquadEq->m_fynm1_P1 = 0;
-  psBiquadEq->m_fynm2_P1 = 0;
-  psBiquadEq->m_fxnm1_P2 = 0;
-  psBiquadEq->m_fxnm2_P2 = 0;
-  psBiquadEq->m_fynm1_P2 = 0;
-  psBiquadEq->m_fynm2_P2 = 0;
-  psBiquadEq->m_fxnm1_P3 = 0;
-  psBiquadEq->m_fxnm2_P3 = 0;
-  psBiquadEq->m_fynm1_P3 = 0;
-  psBiquadEq->m_fynm2_P3 = 0;
-  psBiquadEq->m_fxnm1_HIGH = 0;
-  psBiquadEq->m_fxnm2_HIGH = 0;
-  psBiquadEq->m_fynm1_HIGH = 0;
-  psBiquadEq->m_fynm2_HIGH = 0;
+void activateThreeBandParametricEqWithShelves(LADSPA_Handle Instance) {
+  ThreeBandParametricEqWithShelves * psInstance;
+  psInstance = (ThreeBandParametricEqWithShelves *)Instance;
+  psInstance->m_fxnm1_LOW = 0;
+  psInstance->m_fxnm2_LOW = 0;
+  psInstance->m_fynm1_LOW = 0;
+  psInstance->m_fynm2_LOW = 0;
+  psInstance->m_fxnm1_P1 = 0;
+  psInstance->m_fxnm2_P1 = 0;
+  psInstance->m_fynm1_P1 = 0;
+  psInstance->m_fynm2_P1 = 0;
+  psInstance->m_fxnm1_P2 = 0;
+  psInstance->m_fxnm2_P2 = 0;
+  psInstance->m_fynm1_P2 = 0;
+  psInstance->m_fynm2_P2 = 0;
+  psInstance->m_fxnm1_P3 = 0;
+  psInstance->m_fxnm2_P3 = 0;
+  psInstance->m_fynm1_P3 = 0;
+  psInstance->m_fynm2_P3 = 0;
+  psInstance->m_fxnm1_HIGH = 0;
+  psInstance->m_fxnm2_HIGH = 0;
+  psInstance->m_fynm1_HIGH = 0;
+  psInstance->m_fynm2_HIGH = 0;
 }
 
 /*****************************************************************************/
 
 /* Connect a port to a data location.  */
-void connectPortToBiquadEq(LADSPA_Handle Instance,
-                           unsigned long Port,
-                           LADSPA_Data * DataLocation) {
+void connectPortToThreeBandParametricEqWithShelves(LADSPA_Handle Instance,
+                                                   unsigned long Port,
+                                                   LADSPA_Data * DataLocation) {
   
-  BiquadEq * psBiquadEq;
-  psBiquadEq = (BiquadEq *)Instance;
+  ThreeBandParametricEqWithShelves * psInstance;
+  psInstance = (ThreeBandParametricEqWithShelves *)Instance;
 
   switch (Port) {
   case SF_INPUT:
-    psBiquadEq->m_pfInput = DataLocation;
+    psInstance->m_pfInput = DataLocation;
     break;
   case SF_OUTPUT:
-    psBiquadEq->m_pfOutput = DataLocation;
+    psInstance->m_pfOutput = DataLocation;
     break;
   case SF_LOW_F:
-    psBiquadEq->m_pfLowF = DataLocation;
+    psInstance->m_pfLowF = DataLocation;
     break;
   case SF_LOW_G:
-    psBiquadEq->m_pfLowG = DataLocation;
+    psInstance->m_pfLowG = DataLocation;
     break;
   case SF_LOW_Q:
-    psBiquadEq->m_pfLowQ = DataLocation;
+    psInstance->m_pfLowQ = DataLocation;
     break;
   case SF_P1_F:
-    psBiquadEq->m_pfP1F = DataLocation;
+    psInstance->m_pfP1F = DataLocation;
     break;
   case SF_P1_G:
-    psBiquadEq->m_pfP1G = DataLocation;
+    psInstance->m_pfP1G = DataLocation;
     break;
   case SF_P1_Q:
-    psBiquadEq->m_pfP1Q = DataLocation;
+    psInstance->m_pfP1Q = DataLocation;
     break;
   case SF_P2_F:
-    psBiquadEq->m_pfP2F = DataLocation;
+    psInstance->m_pfP2F = DataLocation;
     break;
   case SF_P2_G:
-    psBiquadEq->m_pfP2G = DataLocation;
+    psInstance->m_pfP2G = DataLocation;
     break;
   case SF_P2_Q:
-    psBiquadEq->m_pfP2Q = DataLocation;
+    psInstance->m_pfP2Q = DataLocation;
     break;
   case SF_P3_F:
-    psBiquadEq->m_pfP3F = DataLocation;
+    psInstance->m_pfP3F = DataLocation;
     break;
   case SF_P3_G:
-    psBiquadEq->m_pfP3G = DataLocation;
+    psInstance->m_pfP3G = DataLocation;
     break;
   case SF_P3_Q:
-    psBiquadEq->m_pfP3Q = DataLocation;
+    psInstance->m_pfP3Q = DataLocation;
     break;
   case SF_HIGH_F:
-    psBiquadEq->m_pfHighF = DataLocation;
+    psInstance->m_pfHighF = DataLocation;
     break;
   case SF_HIGH_G:
-    psBiquadEq->m_pfHighG = DataLocation;
+    psInstance->m_pfHighG = DataLocation;
     break;
   case SF_HIGH_Q:
-    psBiquadEq->m_pfHighQ = DataLocation;
+    psInstance->m_pfHighQ = DataLocation;
     break;
   case SF_GAIN:
-    psBiquadEq->m_pfGain = DataLocation;
+    psInstance->m_pfGain = DataLocation;
     break;
   }
 }
@@ -291,96 +293,97 @@ void connectPortToBiquadEq(LADSPA_Handle Instance,
 /*****************************************************************************/
 
 /* Run the filter algorithm for a block of SampleCount samples. */
-void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
+void runThreeBandParametricEqWithShelves(LADSPA_Handle Instance,
+                                         unsigned long SampleCount) {
 
   LADSPA_Data * pfInput;
   LADSPA_Data * pfOutput;
-  BiquadEq * psBiquadEq;
+  ThreeBandParametricEqWithShelves * psInstance;
   BiquadCoeffs coeffs_LOW, coeffs_P1, coeffs_P2, coeffs_P3, coeffs_HIGH;
   unsigned long lSampleIndex;
   LADSPA_Data unchanged = 0.0;
   LADSPA_Data changed;
   LADSPA_Data * mmptr;
   float fGainFactor;
-  float xn, yn; // xn/yn holds currently processed input/output sample.
+  float xn, yn; // xn/yn holds currently processed input/output samples.
   float xnm1, xnm2, ynm1, ynm2; // holds previously processed input/output samples.
-  // get BiquadEq Instance
-  psBiquadEq = (BiquadEq *)Instance;
+  // get ThreeBandParametricEqWithShelves Instance
+  psInstance = (ThreeBandParametricEqWithShelves *)Instance;
   // get input and output buffers
-  pfInput = psBiquadEq->m_pfInput;
-  pfOutput = psBiquadEq->m_pfOutput;
-  //memcpy parameters over from mmapped area
-  mmptr = psBiquadEq->m_mmapArea;
+  pfInput = psInstance->m_pfInput;
+  pfOutput = psInstance->m_pfOutput;
+  // memcpy parameters over from mmapped area
+  mmptr = psInstance->m_mmapArea;
   memcpy(&changed, mmptr, sizeof(LADSPA_Data));
   if (changed != 0.0) {
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfLowF, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfLowF, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfLowG, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfLowG, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfLowQ, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfLowQ, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP1F, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP1F, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP1G, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP1G, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP1Q, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP1Q, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP2F, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP2F, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP2G, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP2G, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP2Q, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP2Q, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP3F, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP3F, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP3G, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP3G, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfP3Q, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfP3Q, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfHighF, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfHighF, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfHighG, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfHighG, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfHighQ, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfHighQ, mmptr, sizeof(LADSPA_Data));
     mmptr += 1;
-    memcpy(psBiquadEq->m_pfGain, mmptr, sizeof(LADSPA_Data));
+    memcpy(psInstance->m_pfGain, mmptr, sizeof(LADSPA_Data));
   }
   // reset changed flag to re-enable parametrization by control inputs
-  memcpy(psBiquadEq->m_mmapArea, &unchanged, sizeof(LADSPA_Data));
+  memcpy(psInstance->m_mmapArea, &unchanged, sizeof(LADSPA_Data));
   // calculate coeffs and gain factor
-  coeffs_LOW = calcCoeffsLowShelf(*(psBiquadEq->m_pfLowF),
-	  		          *(psBiquadEq->m_pfLowG),
-			          *(psBiquadEq->m_pfLowQ),
-			          psBiquadEq->m_fSampleRate);
-  coeffs_P1 = calcCoeffsPeaking(*(psBiquadEq->m_pfP1F),
-	  		        *(psBiquadEq->m_pfP1G),
-			        *(psBiquadEq->m_pfP1Q),
-			        psBiquadEq->m_fSampleRate);
-  coeffs_P2 = calcCoeffsPeaking(*(psBiquadEq->m_pfP2F),
-	  		        *(psBiquadEq->m_pfP2G),
-			        *(psBiquadEq->m_pfP2Q),
-			        psBiquadEq->m_fSampleRate);
-  coeffs_P3 = calcCoeffsPeaking(*(psBiquadEq->m_pfP3F),
-	  		        *(psBiquadEq->m_pfP3G),
-			        *(psBiquadEq->m_pfP3Q),
-			        psBiquadEq->m_fSampleRate);
-  coeffs_HIGH = calcCoeffsHighShelf(*(psBiquadEq->m_pfHighF),
-	  	  	            *(psBiquadEq->m_pfHighG),
-			            *(psBiquadEq->m_pfHighQ),
-			            psBiquadEq->m_fSampleRate);
-  fGainFactor = dbToGainFactor(*(psBiquadEq->m_pfGain));
+  coeffs_LOW = calcCoeffsLowShelf(*(psInstance->m_pfLowF),
+	  		                          *(psInstance->m_pfLowG),
+			                            *(psInstance->m_pfLowQ),
+			                            psInstance->m_fSampleRate);
+  coeffs_P1 = calcCoeffsPeaking(*(psInstance->m_pfP1F),
+	  		                        *(psInstance->m_pfP1G),
+			                          *(psInstance->m_pfP1Q),
+			                          psInstance->m_fSampleRate);
+  coeffs_P2 = calcCoeffsPeaking(*(psInstance->m_pfP2F),
+	  		                        *(psInstance->m_pfP2G),
+			                          *(psInstance->m_pfP2Q),
+			                          psInstance->m_fSampleRate);
+  coeffs_P3 = calcCoeffsPeaking(*(psInstance->m_pfP3F),
+	  		                        *(psInstance->m_pfP3G),
+			                          *(psInstance->m_pfP3Q),
+			                          psInstance->m_fSampleRate);
+  coeffs_HIGH = calcCoeffsHighShelf(*(psInstance->m_pfHighF),
+	  	  	                          *(psInstance->m_pfHighG),
+			                              *(psInstance->m_pfHighQ),
+			                              psInstance->m_fSampleRate);
+  fGainFactor = dbToGainFactor(*(psInstance->m_pfGain));
   // FILTER PROCESSING FOR LOW SHELF EQ ///////////////////////////////////////
   // get preciosuly processed samples
-  xnm1 = psBiquadEq->m_fxnm1_LOW;
-  xnm2 = psBiquadEq->m_fxnm2_LOW;
-  ynm1 = psBiquadEq->m_fynm1_LOW;
-  ynm2 = psBiquadEq->m_fynm2_LOW;
+  xnm1 = psInstance->m_fxnm1_LOW;
+  xnm2 = psInstance->m_fxnm2_LOW;
+  ynm1 = psInstance->m_fynm1_LOW;
+  ynm2 = psInstance->m_fynm2_LOW;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfInput++);
     yn = (coeffs_LOW.b0 * xn   + coeffs_LOW.b1 * xnm1 + coeffs_LOW.b2 * xnm2 - 
-	  coeffs_LOW.a1 * ynm1 - coeffs_LOW.a2 * ynm2) / coeffs_LOW.a0;
+	        coeffs_LOW.a1 * ynm1 - coeffs_LOW.a2 * ynm2) / coeffs_LOW.a0;
     xnm2 = xnm1;
     xnm1 = xn;
     ynm2 = ynm1;
@@ -388,23 +391,23 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
     *(pfOutput++) = yn;
   }
   // store preciously calculated samples in BiQuad instance for later
-  psBiquadEq->m_fxnm1_LOW = xnm1;
-  psBiquadEq->m_fxnm2_LOW = xnm2;
-  psBiquadEq->m_fynm1_LOW = ynm1;
-  psBiquadEq->m_fynm2_LOW = ynm2;
+  psInstance->m_fxnm1_LOW = xnm1;
+  psInstance->m_fxnm2_LOW = xnm2;
+  psInstance->m_fynm1_LOW = ynm1;
+  psInstance->m_fynm2_LOW = ynm2;
   // FILTER PROCESSING FOR PEAKING EQ 1 ///////////////////////////////////////
   // reset output buffer pointer
-  pfOutput = psBiquadEq->m_pfOutput;
+  pfOutput = psInstance->m_pfOutput;
   // get preciosuly processed samples
-  xnm1 = psBiquadEq->m_fxnm1_P1;
-  xnm2 = psBiquadEq->m_fxnm2_P1;
-  ynm1 = psBiquadEq->m_fynm1_P1;
-  ynm2 = psBiquadEq->m_fynm2_P1;
+  xnm1 = psInstance->m_fxnm1_P1;
+  xnm2 = psInstance->m_fxnm2_P1;
+  ynm1 = psInstance->m_fynm1_P1;
+  ynm2 = psInstance->m_fynm2_P1;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
     yn = (coeffs_P1.b0 * xn   + coeffs_P1.b1 * xnm1 + coeffs_P1.b2 * xnm2 - 
-	  coeffs_P1.a1 * ynm1 - coeffs_P1.a2 * ynm2) / coeffs_P1.a0;
+	        coeffs_P1.a1 * ynm1 - coeffs_P1.a2 * ynm2) / coeffs_P1.a0;
     xnm2 = xnm1;
     xnm1 = xn;
     ynm2 = ynm1;
@@ -412,23 +415,23 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
     *(pfOutput++) = yn;
   }
   // store preciously calculated samples in BiQuad instance for later
-  psBiquadEq->m_fxnm1_P1 = xnm1;
-  psBiquadEq->m_fxnm2_P1 = xnm2;
-  psBiquadEq->m_fynm1_P1 = ynm1;
-  psBiquadEq->m_fynm2_P1 = ynm2;
+  psInstance->m_fxnm1_P1 = xnm1;
+  psInstance->m_fxnm2_P1 = xnm2;
+  psInstance->m_fynm1_P1 = ynm1;
+  psInstance->m_fynm2_P1 = ynm2;
   // FILTER PROCESSING FOR PEAKING EQ 2 ///////////////////////////////////////
   // reset output buffer pointer
-  pfOutput = psBiquadEq->m_pfOutput;
+  pfOutput = psInstance->m_pfOutput;
   // get preciosuly processed samples
-  xnm1 = psBiquadEq->m_fxnm1_P2;
-  xnm2 = psBiquadEq->m_fxnm2_P2;
-  ynm1 = psBiquadEq->m_fynm1_P2;
-  ynm2 = psBiquadEq->m_fynm2_P2;
+  xnm1 = psInstance->m_fxnm1_P2;
+  xnm2 = psInstance->m_fxnm2_P2;
+  ynm1 = psInstance->m_fynm1_P2;
+  ynm2 = psInstance->m_fynm2_P2;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
     yn = (coeffs_P2.b0 * xn   + coeffs_P2.b1 * xnm1 + coeffs_P2.b2 * xnm2 - 
-	  coeffs_P2.a1 * ynm1 - coeffs_P2.a2 * ynm2) / coeffs_P2.a0;
+	        coeffs_P2.a1 * ynm1 - coeffs_P2.a2 * ynm2) / coeffs_P2.a0;
     xnm2 = xnm1;
     xnm1 = xn;
     ynm2 = ynm1;
@@ -436,23 +439,23 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
     *(pfOutput++) = yn;
   }
   // store preciously calculated samples in BiQuad instance for later
-  psBiquadEq->m_fxnm1_P2 = xnm1;
-  psBiquadEq->m_fxnm2_P2 = xnm2;
-  psBiquadEq->m_fynm1_P2 = ynm1;
-  psBiquadEq->m_fynm2_P2 = ynm2;
+  psInstance->m_fxnm1_P2 = xnm1;
+  psInstance->m_fxnm2_P2 = xnm2;
+  psInstance->m_fynm1_P2 = ynm1;
+  psInstance->m_fynm2_P2 = ynm2;
   // FILTER PROCESSING FOR PEAKING EQ 3 ///////////////////////////////////////
   // reset output buffer pointer
-  pfOutput = psBiquadEq->m_pfOutput;
+  pfOutput = psInstance->m_pfOutput;
   // get preciosuly processed samples
-  xnm1 = psBiquadEq->m_fxnm1_P3;
-  xnm2 = psBiquadEq->m_fxnm2_P3;
-  ynm1 = psBiquadEq->m_fynm1_P3;
-  ynm2 = psBiquadEq->m_fynm2_P3;
+  xnm1 = psInstance->m_fxnm1_P3;
+  xnm2 = psInstance->m_fxnm2_P3;
+  ynm1 = psInstance->m_fynm1_P3;
+  ynm2 = psInstance->m_fynm2_P3;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
     yn = (coeffs_P3.b0 * xn   + coeffs_P3.b1 * xnm1 + coeffs_P3.b2 * xnm2 - 
-	  coeffs_P3.a1 * ynm1 - coeffs_P3.a2 * ynm2) / coeffs_P3.a0;
+	        coeffs_P3.a1 * ynm1 - coeffs_P3.a2 * ynm2) / coeffs_P3.a0;
     xnm2 = xnm1;
     xnm1 = xn;
     ynm2 = ynm1;
@@ -460,23 +463,23 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
     *(pfOutput++) = yn;
   }
   // store preciously calculated samples in BiQuad instance for later
-  psBiquadEq->m_fxnm1_P3 = xnm1;
-  psBiquadEq->m_fxnm2_P3 = xnm2;
-  psBiquadEq->m_fynm1_P3 = ynm1;
-  psBiquadEq->m_fynm2_P3 = ynm2;
+  psInstance->m_fxnm1_P3 = xnm1;
+  psInstance->m_fxnm2_P3 = xnm2;
+  psInstance->m_fynm1_P3 = ynm1;
+  psInstance->m_fynm2_P3 = ynm2;
   // FILTER PROCESSING FOR HIGH SHELF EQ //////////////////////////////////////
   // reset output buffer pointer
-  pfOutput = psBiquadEq->m_pfOutput;
+  pfOutput = psInstance->m_pfOutput;
   // get preciosuly processed samples
-  xnm1 = psBiquadEq->m_fxnm1_HIGH;
-  xnm2 = psBiquadEq->m_fxnm2_HIGH;
-  ynm1 = psBiquadEq->m_fynm1_HIGH;
-  ynm2 = psBiquadEq->m_fynm2_HIGH;
+  xnm1 = psInstance->m_fxnm1_HIGH;
+  xnm2 = psInstance->m_fxnm2_HIGH;
+  ynm1 = psInstance->m_fynm1_HIGH;
+  ynm2 = psInstance->m_fynm2_HIGH;
   // apply biquad calculation to buffers
   for (lSampleIndex = 0; lSampleIndex < SampleCount; lSampleIndex++) {
     xn = *(pfOutput);
     yn = (coeffs_HIGH.b0 * xn   + coeffs_HIGH.b1 * xnm1 + coeffs_HIGH.b2 * xnm2 - 
-	  coeffs_HIGH.a1 * ynm1 - coeffs_HIGH.a2 * ynm2) / coeffs_HIGH.a0;
+	        coeffs_HIGH.a1 * ynm1 - coeffs_HIGH.a2 * ynm2) / coeffs_HIGH.a0;
     xnm2 = xnm1;
     xnm1 = xn;
     ynm2 = ynm1;
@@ -484,31 +487,33 @@ void runBiquadEq(LADSPA_Handle Instance, unsigned long SampleCount) {
     *(pfOutput++) = yn * fGainFactor;
   }
   // store preciously calculated samples in BiQuad instance for later
-  psBiquadEq->m_fxnm1_HIGH = xnm1;
-  psBiquadEq->m_fxnm2_HIGH = xnm2;
-  psBiquadEq->m_fynm1_HIGH = ynm1;
-  psBiquadEq->m_fynm2_HIGH = ynm2;
+  psInstance->m_fxnm1_HIGH = xnm1;
+  psInstance->m_fxnm2_HIGH = xnm2;
+  psInstance->m_fynm1_HIGH = ynm1;
+  psInstance->m_fynm2_HIGH = ynm2;
 }
 
 /*****************************************************************************/
 
-/* Throw away a filter instance. */
-void cleanupBiquadEq(LADSPA_Handle Instance) {
-  BiquadEq * psBiquadEq;
-  psBiquadEq = (BiquadEq *)Instance;
+/* Throw away a ThreeBandParametricEqWithShelves instance. */
+void cleanupThreeBandParametricEqWithShelves(LADSPA_Handle Instance) {
+  ThreeBandParametricEqWithShelves * psInstance;
+  psInstance = (ThreeBandParametricEqWithShelves *)Instance;
+  // unlink mmapped file
   char name[255];
-  sprintf(name, "/dev/shm/t5-parameq_%u_%011lu.%09lu", getpid(),
-          psBiquadEq->m_created_s, psBiquadEq->m_created_ns);
+  sprintf(name, "/dev/shm/t5_3BandParamEqWithShelves_%u_%011lu.%09lu", getpid(),
+          psInstance->m_created_s, psInstance->m_created_ns);
   int ret = remove(name);
   if (ret != 0) {
     printf("Error removing mmap file %s\n", name);
   }
+  // free memory
   free(Instance);
 }
 
 /*****************************************************************************/
 
-LADSPA_Descriptor * g_psBiquadEqDescriptor = NULL;
+LADSPA_Descriptor * g_psThreeBandParametricEqWithShelvesInstanceDescriptor = NULL;
 
 /*****************************************************************************/
 
@@ -520,28 +525,28 @@ _init() {
   LADSPA_PortDescriptor * piPortDescriptors;
   LADSPA_PortRangeHint * psPortRangeHints;
   
-  g_psBiquadEqDescriptor
+  g_psThreeBandParametricEqWithShelvesInstanceDescriptor
     = (LADSPA_Descriptor *)malloc(sizeof(LADSPA_Descriptor));
 
-  if (g_psBiquadEqDescriptor != NULL) {
+  if (g_psThreeBandParametricEqWithShelvesInstanceDescriptor != NULL) {
   
-    g_psBiquadEqDescriptor->UniqueID
-      = 5;
-    g_psBiquadEqDescriptor->Label
-      = strdup("biquadeq_5");
-    g_psBiquadEqDescriptor->Properties
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->UniqueID
+      = 85;
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->Label
+      = strdup("3band_parameq_with_shelves");
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->Properties
       = LADSPA_PROPERTY_HARD_RT_CAPABLE;
-    g_psBiquadEqDescriptor->Name 
-      = strdup("3-Band Biquad-EQ with Shelves");
-    g_psBiquadEqDescriptor->Maker
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->Name 
+      = strdup("T5's 3-Band Parametric with Shelves");
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->Maker
       = strdup("Juergen Herrmann (t-5@gmx.de)");
-    g_psBiquadEqDescriptor->Copyright
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->Copyright
       = strdup("GPL");
-    g_psBiquadEqDescriptor->PortCount
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->PortCount
       = PORTCOUNT;
     piPortDescriptors
       = (LADSPA_PortDescriptor *)calloc(PORTCOUNT, sizeof(LADSPA_PortDescriptor));
-    g_psBiquadEqDescriptor->PortDescriptors
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->PortDescriptors
       = (const LADSPA_PortDescriptor *)piPortDescriptors;
     piPortDescriptors[SF_INPUT]
       = LADSPA_PORT_INPUT | LADSPA_PORT_AUDIO;
@@ -581,7 +586,7 @@ _init() {
       = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
     pcPortNames
       = (char **)calloc(PORTCOUNT, sizeof(char *));
-    g_psBiquadEqDescriptor->PortNames 
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->PortNames 
       = (const char **)pcPortNames;
     pcPortNames[SF_INPUT]
       = strdup("Input");
@@ -621,7 +626,7 @@ _init() {
       = strdup("Overall Gain [dB]");
     psPortRangeHints = ((LADSPA_PortRangeHint *)
 			calloc(PORTCOUNT, sizeof(LADSPA_PortRangeHint)));
-    g_psBiquadEqDescriptor->PortRangeHints
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->PortRangeHints
       = (const LADSPA_PortRangeHint *)psPortRangeHints;
     // Low Shelf --------------------------------------------------------- */
     psPortRangeHints[SF_LOW_F].HintDescriptor
@@ -772,22 +777,22 @@ _init() {
       = 0;
     psPortRangeHints[SF_OUTPUT].HintDescriptor
       = 0;
-    g_psBiquadEqDescriptor->instantiate 
-      = instantiateBiquadEq;
-    g_psBiquadEqDescriptor->connect_port 
-      = connectPortToBiquadEq;
-    g_psBiquadEqDescriptor->activate
-      = activateBiquadEq;
-    g_psBiquadEqDescriptor->run
-      = runBiquadEq;
-    g_psBiquadEqDescriptor->run_adding
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->instantiate 
+      = instantiateThreeBandParametricEqWithShelves;
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->connect_port 
+      = connectPortToThreeBandParametricEqWithShelves;
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->activate
+      = activateThreeBandParametricEqWithShelves;
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->run
+      = runThreeBandParametricEqWithShelves;
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->run_adding
       = NULL;
-    g_psBiquadEqDescriptor->set_run_adding_gain
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->set_run_adding_gain
       = NULL;
-    g_psBiquadEqDescriptor->deactivate
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->deactivate
       = NULL;
-    g_psBiquadEqDescriptor->cleanup
-      = cleanupBiquadEq;
+    g_psThreeBandParametricEqWithShelvesInstanceDescriptor->cleanup
+      = cleanupThreeBandParametricEqWithShelves;
   }
 }
   
@@ -813,19 +818,17 @@ void deleteDescriptor(LADSPA_Descriptor * psDescriptor) {
 
 /* _fini() is called automatically when the library is unloaded. */
 void _fini() {
-  deleteDescriptor(g_psBiquadEqDescriptor);
+  deleteDescriptor(g_psThreeBandParametricEqWithShelvesInstanceDescriptor);
 }
 
 /*****************************************************************************/
 
-/* Return a descriptor of the requested plugin type. There is one
-   plugin types available in this library. */
+/* Return a descriptor of the requested plugin types. */
 const LADSPA_Descriptor * ladspa_descriptor(unsigned long Index) {
-  /* Return the requested descriptor or null if the index is out of
-     range. */
+  /* Return the requested descriptor or null if the index is out of range. */
   switch (Index) {
   case 0:
-    return g_psBiquadEqDescriptor;
+    return g_psThreeBandParametricEqWithShelvesInstanceDescriptor;
   default:
     return NULL;
   }
