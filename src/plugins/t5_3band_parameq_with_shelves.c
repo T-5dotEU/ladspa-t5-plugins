@@ -518,8 +518,7 @@ LADSPA_Descriptor * g_psThreeBandParametricEqWithShelvesInstanceDescriptor = NUL
 /*****************************************************************************/
 
 /* _init() is called automatically when the plugin library is first loaded. */
-void 
-_init() {
+void _init() {
 
   char ** pcPortNames;
   LADSPA_PortDescriptor * piPortDescriptors;

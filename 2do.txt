@@ -1,4 +1,0 @@
-rename .so name to t5_3band_parameq_with_shelves
-get proper ladspa ids
-rename label to 3band_parameq_with_shelves
-rename struct and functions from BiquadEq to ThreeBandParaqmEqWithSelhves
