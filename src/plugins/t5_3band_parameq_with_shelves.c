@@ -530,7 +530,7 @@ void _init() {
   if (g_psThreeBandParametricEqWithShelvesInstanceDescriptor != NULL) {
   
     g_psThreeBandParametricEqWithShelvesInstanceDescriptor->UniqueID
-      = 85;
+      = 5541;
     g_psThreeBandParametricEqWithShelvesInstanceDescriptor->Label
       = strdup("3band_parameq_with_shelves");
     g_psThreeBandParametricEqWithShelvesInstanceDescriptor->Properties
