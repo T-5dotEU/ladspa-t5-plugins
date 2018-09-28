@@ -28,25 +28,26 @@
 
 /*****************************************************************************/
 
-#define SF_INPUT   0
-#define SF_OUTPUT  1
-#define SF_LOW_F   2
-#define SF_LOW_G   3
-#define SF_LOW_Q   4
-#define SF_P1_F    5
-#define SF_P1_G    6
-#define SF_P1_Q    7
-#define SF_P2_F    8
-#define SF_P2_G    9
-#define SF_P2_Q    10
-#define SF_P3_F    11
-#define SF_P3_G    12
-#define SF_P3_Q    13
-#define SF_HIGH_F  14
-#define SF_HIGH_G  15
-#define SF_HIGH_Q  16
-#define SF_GAIN    17
-#define PORTCOUNT  18
+#define SF_INPUT       0
+#define SF_OUTPUT      1
+#define SF_LOW_F       2
+#define SF_LOW_G       3
+#define SF_LOW_Q       4
+#define SF_P1_F        5
+#define SF_P1_G        6
+#define SF_P1_Q        7
+#define SF_P2_F        8
+#define SF_P2_G        9
+#define SF_P2_Q       10
+#define SF_P3_F       11
+#define SF_P3_G       12
+#define SF_P3_Q       13
+#define SF_HIGH_F     14
+#define SF_HIGH_G     15
+#define SF_HIGH_Q     16
+#define SF_GAIN       17
+#define SF_MMAPFNAME  18
+#define PORTCOUNT     19
 
 /*****************************************************************************/
 
@@ -100,6 +101,7 @@ typedef struct {
   LADSPA_Data * m_pfHighG;
   LADSPA_Data * m_pfHighQ;
   LADSPA_Data * m_pfGain;
+  LADSPA_Data * m_pfMmapFname;
 
 } ThreeBandParametricEqWithShelves;
 
@@ -163,16 +165,7 @@ BiquadCoeffs calcCoeffsHighShelf(float f, float g, float q, float samplerate) {
   return coeffs;
 }
 
-/*****************************************************************************/
-
-/* Construct a new plugin instance. */
-LADSPA_Handle instantiateThreeBandParametricEqWithShelves(const LADSPA_Descriptor * Descriptor,
-                                  unsigned long SampleRate) {
-  ThreeBandParametricEqWithShelves * psInstance;
-  psInstance = (ThreeBandParametricEqWithShelves *)malloc(sizeof(ThreeBandParametricEqWithShelves));
-  if (psInstance) {
-    psInstance->m_fSampleRate = (LADSPA_Data)SampleRate;
-  }
+void setupMmapFileForThreeBandParametricEqWithShelves(ThreeBandParametricEqWithShelves * psInstance) {
   // setup shared memory area to enable parametrization at runtime from external processes
   char name[255];
   long ns;
@@ -181,7 +174,11 @@ LADSPA_Handle instantiateThreeBandParametricEqWithShelves(const LADSPA_Descripto
   clock_gettime(CLOCK_REALTIME, &spec);
   s = spec.tv_sec;
   ns = spec.tv_nsec;
-  sprintf(name, "/dev/shm/t5_3BandParamEqWithShelves_%u_%011lu.%09lu", getpid(), s, ns);
+  sprintf(name,
+          "/dev/shm/t5_3BandParamEqWithShelves_%u_%011lu.%09lu",
+          (int)round(*(psInstance->m_pfMmapFname)),
+          s,
+          ns);
   int fd = open(name, O_RDWR | O_CREAT, 0600);
   int ret = ftruncate(fd, (PORTCOUNT-1) * sizeof(LADSPA_Data));
   if (ret != 0) {
@@ -191,6 +188,19 @@ LADSPA_Handle instantiateThreeBandParametricEqWithShelves(const LADSPA_Descripto
                             PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
   psInstance->m_created_s = s;
   psInstance->m_created_ns = ns;
+}
+
+/*****************************************************************************/
+
+/* Construct a new plugin instance. */
+LADSPA_Handle instantiateThreeBandParametricEqWithShelves(const LADSPA_Descriptor * Descriptor,
+                                  unsigned long SampleRate) {
+  ThreeBandParametricEqWithShelves * psInstance;
+  psInstance = (ThreeBandParametricEqWithShelves *)malloc(sizeof(ThreeBandParametricEqWithShelves));
+  if (psInstance) {
+    psInstance->m_fSampleRate = (LADSPA_Data)SampleRate;
+    psInstance->m_mmapArea = NULL;
+  }  
   return psInstance;
 }
 
@@ -287,6 +297,9 @@ void connectPortToThreeBandParametricEqWithShelves(LADSPA_Handle Instance,
   case SF_GAIN:
     psInstance->m_pfGain = DataLocation;
     break;
+  case SF_MMAPFNAME:
+    psInstance->m_pfMmapFname = DataLocation;
+    break;
   }
 }
 
@@ -314,43 +327,47 @@ void runThreeBandParametricEqWithShelves(LADSPA_Handle Instance,
   pfOutput = psInstance->m_pfOutput;
   // memcpy parameters over from mmapped area
   mmptr = psInstance->m_mmapArea;
-  memcpy(&changed, mmptr, sizeof(LADSPA_Data));
-  if (changed != 0.0) {
-    mmptr += 1;
-    memcpy(psInstance->m_pfLowF, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfLowG, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfLowQ, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP1F, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP1G, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP1Q, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP2F, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP2G, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP2Q, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP3F, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP3G, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfP3Q, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfHighF, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfHighG, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfHighQ, mmptr, sizeof(LADSPA_Data));
-    mmptr += 1;
-    memcpy(psInstance->m_pfGain, mmptr, sizeof(LADSPA_Data));
+  if (mmptr != NULL) {
+    memcpy(&changed, mmptr, sizeof(LADSPA_Data));
+    if (changed != 0.0) {
+      mmptr += 1;
+      memcpy(psInstance->m_pfLowF, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfLowG, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfLowQ, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP1F, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP1G, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP1Q, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP2F, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP2G, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP2Q, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP3F, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP3G, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfP3Q, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfHighF, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfHighG, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfHighQ, mmptr, sizeof(LADSPA_Data));
+      mmptr += 1;
+      memcpy(psInstance->m_pfGain, mmptr, sizeof(LADSPA_Data));
+    }
+    // reset changed flag to re-enable parametrization by control inputs
+    memcpy(psInstance->m_mmapArea, &unchanged, sizeof(LADSPA_Data));
+  } else if (*(psInstance->m_pfMmapFname) != 0.0) {
+    setupMmapFileForThreeBandParametricEqWithShelves(psInstance);
   }
-  // reset changed flag to re-enable parametrization by control inputs
-  memcpy(psInstance->m_mmapArea, &unchanged, sizeof(LADSPA_Data));
   // calculate coeffs and gain factor
   coeffs_LOW = calcCoeffsLowShelf(*(psInstance->m_pfLowF),
 	  		                          *(psInstance->m_pfLowG),
@@ -499,16 +516,21 @@ void runThreeBandParametricEqWithShelves(LADSPA_Handle Instance,
 void cleanupThreeBandParametricEqWithShelves(LADSPA_Handle Instance) {
   ThreeBandParametricEqWithShelves * psInstance;
   psInstance = (ThreeBandParametricEqWithShelves *)Instance;
-  // unlink mmapped file
-  char name[255];
-  sprintf(name, "/dev/shm/t5_3BandParamEqWithShelves_%u_%011lu.%09lu", getpid(),
-          psInstance->m_created_s, psInstance->m_created_ns);
-  int ret = remove(name);
-  if (ret != 0) {
-    printf("Error removing mmap file %s\n", name);
+  if (psInstance->m_mmapArea != NULL) {
+    // unlink mmapped file
+    char name[255];
+    sprintf(name,
+            "/dev/shm/t5_3BandParamEqWithShelves_%u_%011lu.%09lu",
+            (int)round(*(psInstance->m_pfMmapFname)),
+            psInstance->m_created_s,
+            psInstance->m_created_ns);
+    int ret = remove(name);
+    if (ret != 0) {
+      printf("Error removing mmap file %s\n", name);
+    }
+    // free memory
+    free(Instance);
   }
-  // free memory
-  free(Instance);
 }
 
 /*****************************************************************************/
@@ -583,6 +605,8 @@ void _init() {
       = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
     piPortDescriptors[SF_GAIN]
       = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
+    piPortDescriptors[SF_MMAPFNAME]
+      = LADSPA_PORT_INPUT | LADSPA_PORT_CONTROL;
     pcPortNames
       = (char **)calloc(PORTCOUNT, sizeof(char *));
     g_psThreeBandParametricEqWithShelvesInstanceDescriptor->PortNames 
@@ -623,6 +647,8 @@ void _init() {
       = strdup("High Shelf Q");
     pcPortNames[SF_GAIN]
       = strdup("Overall Gain [dB]");
+    pcPortNames[SF_MMAPFNAME]
+      = strdup("MMAP-Filename-Part");
     psPortRangeHints = ((LADSPA_PortRangeHint *)
 			calloc(PORTCOUNT, sizeof(LADSPA_PortRangeHint)));
     g_psThreeBandParametricEqWithShelvesInstanceDescriptor->PortRangeHints
@@ -630,26 +656,26 @@ void _init() {
     // Low Shelf --------------------------------------------------------- */
     psPortRangeHints[SF_LOW_F].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_SAMPLE_RATE
-	 | LADSPA_HINT_LOGARITHMIC
-	 | LADSPA_HINT_DEFAULT_440);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_SAMPLE_RATE
+	     | LADSPA_HINT_LOGARITHMIC
+	     | LADSPA_HINT_DEFAULT_440);
     psPortRangeHints[SF_LOW_F].LowerBound 
       = 0;
     psPortRangeHints[SF_LOW_F].UpperBound
       = 0.5;
     psPortRangeHints[SF_LOW_G].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_0);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_0);
     psPortRangeHints[SF_LOW_G].LowerBound 
       = -12;
     psPortRangeHints[SF_LOW_G].UpperBound
       = 12;
     psPortRangeHints[SF_LOW_Q].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_1);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_1);
     psPortRangeHints[SF_LOW_Q].LowerBound 
       = 0.1;
     psPortRangeHints[SF_LOW_Q].UpperBound
@@ -657,26 +683,26 @@ void _init() {
     // Peaking Parametric EQ 1 -------------------------------------------- */
     psPortRangeHints[SF_P1_F].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_SAMPLE_RATE
-	 | LADSPA_HINT_LOGARITHMIC
-	 | LADSPA_HINT_DEFAULT_440);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_SAMPLE_RATE
+	     | LADSPA_HINT_LOGARITHMIC
+	     | LADSPA_HINT_DEFAULT_440);
     psPortRangeHints[SF_P1_F].LowerBound 
       = 0;
     psPortRangeHints[SF_P1_F].UpperBound
       = 0.5;
     psPortRangeHints[SF_P1_G].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_0);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_0);
     psPortRangeHints[SF_P1_G].LowerBound 
       = -12;
     psPortRangeHints[SF_P1_G].UpperBound
       = 12;
     psPortRangeHints[SF_P1_Q].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_1);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_1);
     psPortRangeHints[SF_P1_Q].LowerBound 
       = 0.1;
     psPortRangeHints[SF_P1_Q].UpperBound
@@ -684,26 +710,26 @@ void _init() {
     // Peaking Parametric EQ 2 -------------------------------------------- */
     psPortRangeHints[SF_P2_F].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_SAMPLE_RATE
-	 | LADSPA_HINT_LOGARITHMIC
-	 | LADSPA_HINT_DEFAULT_440);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_SAMPLE_RATE
+	     | LADSPA_HINT_LOGARITHMIC
+	     | LADSPA_HINT_DEFAULT_440);
     psPortRangeHints[SF_P2_F].LowerBound 
       = 0;
     psPortRangeHints[SF_P2_F].UpperBound
       = 0.5;
     psPortRangeHints[SF_P2_G].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_0);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_0);
     psPortRangeHints[SF_P2_G].LowerBound 
       = -12;
     psPortRangeHints[SF_P2_G].UpperBound
       = 12;
     psPortRangeHints[SF_P2_Q].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_1);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_1);
     psPortRangeHints[SF_P2_Q].LowerBound 
       = 0.1;
     psPortRangeHints[SF_P2_Q].UpperBound
@@ -711,26 +737,26 @@ void _init() {
     // Peaking Parametric EQ 3 -------------------------------------------- */
     psPortRangeHints[SF_P3_F].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_SAMPLE_RATE
-	 | LADSPA_HINT_LOGARITHMIC
-	 | LADSPA_HINT_DEFAULT_440);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_SAMPLE_RATE
+	     | LADSPA_HINT_LOGARITHMIC
+	     | LADSPA_HINT_DEFAULT_440);
     psPortRangeHints[SF_P3_F].LowerBound 
       = 0;
     psPortRangeHints[SF_P3_F].UpperBound
       = 0.5;
     psPortRangeHints[SF_P3_G].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_0);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_0);
     psPortRangeHints[SF_P3_G].LowerBound 
       = -12;
     psPortRangeHints[SF_P3_G].UpperBound
       = 12;
     psPortRangeHints[SF_P3_Q].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_1);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_1);
     psPortRangeHints[SF_P3_Q].LowerBound 
       = 0.1;
     psPortRangeHints[SF_P3_Q].UpperBound
@@ -738,26 +764,26 @@ void _init() {
     // High Shelf -------------------------------------------------------- */
     psPortRangeHints[SF_HIGH_F].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_SAMPLE_RATE
-	 | LADSPA_HINT_LOGARITHMIC
-	 | LADSPA_HINT_DEFAULT_440);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_SAMPLE_RATE
+	     | LADSPA_HINT_LOGARITHMIC
+	     | LADSPA_HINT_DEFAULT_440);
     psPortRangeHints[SF_HIGH_F].LowerBound 
       = 0;
     psPortRangeHints[SF_HIGH_F].UpperBound
       = 0.5;
     psPortRangeHints[SF_HIGH_G].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_0);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_0);
     psPortRangeHints[SF_HIGH_G].LowerBound 
       = -12;
     psPortRangeHints[SF_HIGH_G].UpperBound
       = 12;
     psPortRangeHints[SF_HIGH_Q].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_1);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_1);
     psPortRangeHints[SF_HIGH_Q].LowerBound 
       = 0.1;
     psPortRangeHints[SF_HIGH_Q].UpperBound
@@ -765,12 +791,21 @@ void _init() {
     // Gain ------------------------------------------------------------ */
     psPortRangeHints[SF_GAIN].HintDescriptor
       = (LADSPA_HINT_BOUNDED_BELOW 
-	 | LADSPA_HINT_BOUNDED_ABOVE
-	 | LADSPA_HINT_DEFAULT_0);
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_0);
     psPortRangeHints[SF_GAIN].LowerBound 
       = -12;
     psPortRangeHints[SF_GAIN].UpperBound
       = 12;
+    // MMAP Filename --------------------------------------------------- */
+    psPortRangeHints[SF_MMAPFNAME].HintDescriptor
+      = (LADSPA_HINT_BOUNDED_BELOW 
+	     | LADSPA_HINT_BOUNDED_ABOVE
+	     | LADSPA_HINT_DEFAULT_0);
+    psPortRangeHints[SF_MMAPFNAME].LowerBound 
+      = 0;
+    psPortRangeHints[SF_MMAPFNAME].UpperBound
+      = 10000000000;
     // In- and Outpus -------------------------------------------------- */
     psPortRangeHints[SF_INPUT].HintDescriptor
       = 0;

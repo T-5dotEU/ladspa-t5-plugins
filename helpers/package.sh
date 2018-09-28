@@ -15,4 +15,3 @@ dpkg --build debian && \
     mv debian.deb builds/ladspa-t5-plugins_${VERSION}_amd64.deb && \
     aptly repo add t-5 builds && \
     echo -n "$VERSION" > .previous_version
-
